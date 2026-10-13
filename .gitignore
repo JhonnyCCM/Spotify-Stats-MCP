@@ -1,0 +1,23 @@
+# Credenciales y secretos privados
+.env
+.cache
+
+# Base de datos histórica personal
+history.db
+
+# Entornos virtuales
+.venv/
+env/
+venv/
+ENV/
+
+# Python cache y compilados
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
