@@ -233,6 +233,17 @@ HTML_TEMPLATE = """
 
     <!-- VISTA 4: PLAYLISTS -->
     <section id="view-playlists" class="hidden">
+      <div class="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-gradient-to-r from-zinc-900 via-spotify-card to-zinc-900 border border-spotify-border shadow-lg">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-wand-magic-sparkles text-spotify-green"></i> Creador Inteligente de Playlists
+          </h2>
+          <p class="text-xs text-spotify-subtext mt-0.5">Arma una playlist automática en tu cuenta basada en tus gustos o artistas favoritos.</p>
+        </div>
+        <button onclick="openPlaylistModal()" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-greenHover text-black text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-spotify-green/20">
+          <i class="fa-solid fa-plus"></i> Crear Nueva Playlist
+        </button>
+      </div>
       <div id="playlists-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
     </section>
 
@@ -748,6 +759,85 @@ HTML_TEMPLATE = """
       }
     }
 
+    function openPlaylistModal() {
+      document.getElementById('modal-playlist').classList.remove('hidden');
+      document.getElementById('pl-name').value = `Mix IA - ${new Date().toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}`;
+      document.getElementById('pl-modal-status').classList.add('hidden');
+      document.getElementById('btn-submit-playlist').disabled = false;
+      document.getElementById('btn-submit-playlist').innerHTML = '<i class="fa-brands fa-spotify text-base"></i> Crear en mi Spotify';
+    }
+
+    function closePlaylistModal() {
+      document.getElementById('modal-playlist').classList.add('hidden');
+    }
+
+    function toggleArtistInput() {
+      const mode = document.getElementById('pl-mode').value;
+      const box = document.getElementById('pl-artist-box');
+      if (mode === 'artist_spotlight') {
+        box.classList.remove('hidden');
+      } else {
+        box.classList.add('hidden');
+      }
+    }
+
+    async function submitCreatePlaylist() {
+      const name = document.getElementById('pl-name').value.trim();
+      if (!name) return alert("Por favor escribe un nombre para la playlist.");
+
+      const mode = document.getElementById('pl-mode').value;
+      const range = document.getElementById('pl-range').value;
+      const count = parseInt(document.getElementById('pl-count').value);
+      const artistsRaw = document.getElementById('pl-artists').value;
+      const artists = artistsRaw ? artistsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+      const btn = document.getElementById('btn-submit-playlist');
+      const statusBox = document.getElementById('pl-modal-status');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Creando en Spotify...';
+
+      statusBox.classList.remove('hidden');
+      statusBox.className = "p-3 rounded-xl bg-zinc-900 text-zinc-300 text-center font-medium";
+      statusBox.innerText = "Consultando catálogo y añadiendo canciones...";
+
+      try {
+        const res = await fetch('/api/create-smart-playlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            mode: mode,
+            time_range: range,
+            track_count: count,
+            seed_artists: artists
+          })
+        });
+
+        const data = await res.json();
+        if (data.status === 'success') {
+          statusBox.className = "p-3 rounded-xl bg-spotify-green/20 border border-spotify-green/40 text-spotify-green text-center font-semibold";
+          statusBox.innerHTML = `
+            🎉 ¡Playlist creada con éxito! (${data.total_canciones} canciones)<br>
+            <a href="${data.playlist_url}" target="_blank" class="inline-block mt-2 underline font-bold text-white hover:text-spotify-green">
+              Abrir en Spotify <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+            </a>
+          `;
+          btn.innerHTML = '<i class="fa-solid fa-check"></i> ¡Creada!';
+          fetch('/api/playlists?limit=30').then(r => r.json()).then(pls => {
+            rawData.playlists = pls;
+            renderPlaylists(pls);
+          });
+        } else {
+          throw new Error(data.detail || "Error desconocido");
+        }
+      } catch (err) {
+        statusBox.className = "p-3 rounded-xl bg-red-900/30 border border-red-700/50 text-red-300 text-center font-semibold";
+        statusBox.innerText = "Error creando la playlist: " + err.message;
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-brands fa-spotify"></i> Reintentar';
+      }
+    }
+
     // Inicializar al cargar
     setLayout(currentLayout);
     fetchAllData();
@@ -755,9 +845,84 @@ HTML_TEMPLATE = """
     setInterval(updateCurrentlyPlaying, 3000);
     setInterval(refreshRecent, 15000);
   </script>
+
+  <!-- MODAL CREAR PLAYLIST -->
+  <div id="modal-playlist" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-spotify-card border border-spotify-border w-full max-w-md rounded-3xl p-6 shadow-2xl relative">
+      <button onclick="closePlaylistModal()" class="absolute top-5 right-5 text-zinc-400 hover:text-white">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+      
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-10 h-10 rounded-2xl bg-spotify-green/10 border border-spotify-green/30 text-spotify-green flex items-center justify-center text-lg">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-white">Crear Playlist Inteligente</h3>
+          <p class="text-xs text-spotify-subtext">Generada con tus gustos de Spotify</p>
+        </div>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-zinc-300 mb-1">Nombre de la Playlist:</label>
+          <input type="text" id="pl-name" placeholder="Ej. Vibes de la Semana" class="w-full bg-zinc-900 border border-zinc-700 focus:border-spotify-green rounded-xl px-3 py-2 text-white outline-none">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-zinc-300 mb-1">Modo de Generación:</label>
+          <select id="pl-mode" onchange="toggleArtistInput()" class="w-full bg-zinc-900 border border-zinc-700 focus:border-spotify-green rounded-xl px-3 py-2 text-white outline-none">
+            <option value="top_tracks">🔥 Mis canciones más escuchadas (Top Tracks)</option>
+            <option value="top_artists_mix">🔀 Mix de mis Top Artistas del momento</option>
+            <option value="artist_spotlight">🎯 Artistas específicos (Personalizado)</option>
+          </select>
+        </div>
+
+        <div id="pl-artist-box" class="hidden">
+          <label class="block font-semibold text-zinc-300 mb-1">Artistas separados por coma:</label>
+          <input type="text" id="pl-artists" placeholder="Ej. Bad Bunny, Blessd, Feid" class="w-full bg-zinc-900 border border-zinc-700 focus:border-spotify-green rounded-xl px-3 py-2 text-white outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-zinc-300 mb-1">Período de afinidad:</label>
+            <select id="pl-range" class="w-full bg-zinc-900 border border-zinc-700 focus:border-spotify-green rounded-xl px-3 py-2 text-white outline-none">
+              <option value="short_term">Último Mes</option>
+              <option value="medium_term">Últimos 6 Meses</option>
+              <option value="long_term">De por Vida</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-zinc-300 mb-1">Cantidad de canciones:</label>
+            <select id="pl-count" class="w-full bg-zinc-900 border border-zinc-700 focus:border-spotify-green rounded-xl px-3 py-2 text-white outline-none">
+              <option value="15">15 canciones (~45 min)</option>
+              <option value="25" selected>25 canciones (~1h 15m)</option>
+              <option value="40">40 canciones (~2 horas)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="pl-modal-status" class="hidden p-3 rounded-xl bg-zinc-900 text-center font-medium"></div>
+
+        <button onclick="submitCreatePlaylist()" id="btn-submit-playlist" class="w-full py-3 rounded-xl bg-spotify-green hover:bg-spotify-greenHover text-black font-extrabold transition-all flex items-center justify-center gap-2 shadow-lg shadow-spotify-green/20 mt-4">
+          <i class="fa-brands fa-spotify text-base"></i> Crear en mi Spotify
+        </button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
 """
+
+from pydantic import BaseModel
+
+class SmartPlaylistPayload(BaseModel):
+    name: str
+    mode: str = "top_tracks"
+    time_range: str = "short_term"
+    track_count: int = 20
+    seed_artists: list[str] = []
+    description: str = ""
 
 @app.get("/", response_class=HTMLResponse)
 def index():
@@ -782,7 +947,6 @@ def api_top_artists(time_range: str = "medium_term", limit: int = 20):
 @app.get("/api/recently-played")
 def api_recently_played(limit: int = 20):
     items = server.get_recently_played(limit=limit)
-    # Guardar en SQLite local automáticamente
     try:
         database.save_recent_tracks(items)
     except Exception as e:
@@ -800,6 +964,17 @@ def api_playlists(limit: int = 20):
 @app.get("/api/summary")
 def api_summary():
     return server.get_music_profile_summary()
+
+@app.post("/api/create-smart-playlist")
+def api_create_smart_playlist(payload: SmartPlaylistPayload):
+    return server.create_smart_playlist(
+        name=payload.name,
+        mode=payload.mode,
+        time_range=payload.time_range,
+        track_count=payload.track_count,
+        seed_artists=payload.seed_artists,
+        description=payload.description
+    )
 
 if __name__ == "__main__":
     print("Iniciando Spotify Stats Dashboard en http://localhost:5000 ...")
