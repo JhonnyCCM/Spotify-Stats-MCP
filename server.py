@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Literal
 from dotenv import load_dotenv
+import requests
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from mcp.server.fastmcp import FastMCP
@@ -318,15 +319,21 @@ def create_playlist(
                      o nombres de canciones con artistas (ej. ['Bad Bunny - Dákiti', 'Blessd - Medallo']).
     """
     sp = get_spotify_client()
-    user_id = sp.current_user()["id"]
+    auth_mgr = sp.auth_manager
+    token = auth_mgr.get_access_token(as_dict=False)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    # 1. Crear playlist
-    new_pl = sp.user_playlist_create(
-        user=user_id,
-        name=name,
-        public=public,
-        description=description,
+    # 1. Crear playlist usando /v1/me/playlists
+    res = requests.post(
+        "https://api.spotify.com/v1/me/playlists",
+        headers=headers,
+        json={"name": name, "public": public, "description": description},
+        timeout=10,
     )
+    if not res.ok:
+        raise RuntimeError(f"Error creando playlist ({res.status_code}): {res.text}")
+
+    new_pl = res.json()
     pl_id = new_pl["id"]
     pl_url = new_pl["external_urls"]["spotify"]
 
@@ -342,12 +349,10 @@ def create_playlist(
             uris_to_add.append(item)
             added_tracks.append({"uri": item, "query": item})
         elif len(item) == 22 and item.isalnum():
-            # ID directo de Spotify
             uri = f"spotify:track:{item}"
             uris_to_add.append(uri)
             added_tracks.append({"uri": uri, "query": item})
         else:
-            # Buscar por texto
             try:
                 search_res = sp.search(q=item, limit=1, type="track")
                 tracks = search_res.get("tracks", {}).get("items", [])
@@ -366,11 +371,16 @@ def create_playlist(
             except Exception as e:
                 print(f"Error resolviendo track '{item}':", e)
 
-    # 3. Añadir a la playlist por lotes (máximo 100 por petición según la API de Spotify)
+    # 3. Añadir a la playlist por lotes
     if uris_to_add:
         for i in range(0, len(uris_to_add), 100):
             batch = uris_to_add[i : i + 100]
-            sp.playlist_add_items(playlist_id=pl_id, items=batch)
+            requests.post(
+                f"https://api.spotify.com/v1/playlists/{pl_id}/items",
+                headers=headers,
+                json={"uris": batch},
+                timeout=10,
+            )
 
     return {
         "status": "success",
@@ -446,14 +456,33 @@ def create_smart_playlist(
             if len(uris_to_add) >= track_count:
                 break
 
-    # Crear playlist y agregar canciones
-    user_id = sp.current_user()["id"]
-    new_pl = sp.user_playlist_create(user=user_id, name=name, public=False, description=description)
+    auth_mgr = sp.auth_manager
+    token = auth_mgr.get_access_token(as_dict=False)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    # Crear playlist usando /v1/me/playlists
+    res = requests.post(
+        "https://api.spotify.com/v1/me/playlists",
+        headers=headers,
+        json={"name": name, "public": False, "description": description},
+        timeout=10,
+    )
+    if not res.ok:
+        raise RuntimeError(f"Error creando playlist ({res.status_code}): {res.text}")
+
+    new_pl = res.json()
     pl_id = new_pl["id"]
     pl_url = new_pl["external_urls"]["spotify"]
 
     if uris_to_add:
-        sp.playlist_add_items(playlist_id=pl_id, items=uris_to_add)
+        for i in range(0, len(uris_to_add), 100):
+            batch = uris_to_add[i : i + 100]
+            requests.post(
+                f"https://api.spotify.com/v1/playlists/{pl_id}/items",
+                headers=headers,
+                json={"uris": batch},
+                timeout=10,
+            )
 
     return {
         "status": "success",
