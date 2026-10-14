@@ -18,7 +18,7 @@ CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
 CACHE_PATH = str(Path(__file__).parent / ".cache")
 
-SCOPE = "user-top-read user-read-recently-played playlist-read-private user-read-currently-playing user-read-playback-state"
+SCOPE = "user-top-read user-read-recently-played playlist-read-private user-read-currently-playing user-read-playback-state playlist-modify-public playlist-modify-private"
 
 print("Iniciando flujo de autorización de Spotify...")
 auth_manager = SpotifyOAuth(
